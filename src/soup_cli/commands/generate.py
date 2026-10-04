@@ -234,7 +234,7 @@ def generate(
 
         existing_data = load_raw_data(dedup_path)
         for row in existing_data:
-            existing_texts.add(_row_to_text(row))
+            existing_texts.add(_dedup_key(row))
         console.print(f"[dim]Loaded {len(existing_texts)} existing examples for dedup[/]")
 
     # Load template context if provided
@@ -323,15 +323,13 @@ def generate(
             for example in batch:
                 if not _validate_example(example, fmt):
                     # For preference templates, validate against preference format
-                    if template == "preference" and _validate_preference(example):
-                        all_examples.append(example)
+                    if not (template == "preference" and _validate_preference(example)):
                         continue
-                    continue
-                text = _row_to_text(example)
-                if text in existing_texts:
+                key = _dedup_key(example)
+                if key in existing_texts:
                     duplicates += 1
                     continue
-                existing_texts.add(text)
+                existing_texts.add(key)
                 all_examples.append(example)
 
             generated_this_round = len(batch)
@@ -959,3 +957,31 @@ def _path_within_cwd(path: Path, cwd: Path) -> bool:
 def _row_to_text(row: dict) -> str:
     """Convert a row to a text string for dedup comparison."""
     return " ".join(str(v) for v in row.values() if v)
+
+
+# The fields that make a preference row what it is, in the order
+# ``_validate_preference`` checks them: DPO / ORPO, then KTO.
+_PREFERENCE_KEY_FIELDS = (
+    ("prompt", "chosen", "rejected"),
+    ("prompt", "completion", "label"),
+)
+
+
+def _dedup_key(row: dict) -> str:
+    """Key under which ``--dedup-with`` and repeats across batches compare rows.
+
+    A preference row is keyed on its own fields in a fixed order, so it matches
+    whatever order the keys were written in and whatever extra keys (an ``id``,
+    a ``source``) the ``--dedup-with`` file carries, and a KTO ``label`` of
+    ``false`` stays part of the key (#1448). Any other row keeps the
+    :func:`_row_to_text` key.
+    """
+    for fields in _PREFERENCE_KEY_FIELDS:
+        if all(field in row for field in fields):
+            return json.dumps(
+                [row[field] for field in fields],
+                ensure_ascii=False,
+                sort_keys=True,
+                default=str,
+            )
+    return _row_to_text(row)

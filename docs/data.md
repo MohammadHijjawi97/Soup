@@ -451,6 +451,13 @@ soup data generate --prompt "..." --seed examples.jsonl --count 100
 soup data generate --prompt "..." --provider server --api-base http://localhost:11434/v1
 ```
 
+A generated row is dropped, and counted under `Duplicates`, when an earlier batch of the same
+run already produced it or, with `--dedup-with`, when the file already holds it. This covers
+`--template preference` rows too: they are compared on their preference fields only
+(`prompt` / `chosen` / `rejected` for DPO and ORPO, `prompt` / `completion` / `label` for KTO),
+so a different key order or an extra key such as an `id` in the file does not hide a repeat,
+and a KTO row with the opposite `label` is not a repeat.
+
 With `--provider server`, `openai` or `vllm`, `--api-base` takes plain HTTP only for loopback
 (`localhost`, `127.0.0.1`, `::1`) and HTTPS for any other host; `--provider ollama` stays
 loopback-only. A private, link-local or reserved IP literal is refused on either scheme, so
